@@ -1,7 +1,7 @@
 ##############################################
 # This code is based on samples from pytorch #
 ##############################################
-# Writer: Kimin Lee 
+# Writer:Based on code from Kimin Lee 
 from __future__ import print_function
 import argparse
 import torch
@@ -33,6 +33,30 @@ x_out = toy_outD(10000,x_min=[-10, -10], x_max=[10, 10])
 #plt.scatter(x_out[:,0], x_out[:,1], s=2, marker='x')
 
 
+def test_plot():
+    x = torch.tensor(toy_outD(100000)).to(device).float()
+#    x = torch.meshgrid([torch.arange(-10,10,.1), torch.arange(-10,10,.1)])
+#    x = torch.cat((x[0].reshape(-1,1),x[1].reshape(-1,1)),1).to(device)
+    y = torch.exp(logSm(model(x)))
+    x = x.cpu().data.numpy()
+    y = y.cpu().data.numpy()
+#    x_class_0 = x[y[:,0]<0.2]
+#    x_class_1 = x[y[:,0]>0.2]
+#    #print(y.shape)
+#   
+    plt.clf()
+    #plt.figure(figsize=[15,15],)
+    plt.scatter(x[:,0], x[:,1], s=2, c=y[:,0], cmap='gist_earth')
+    plt.colorbar()
+    col = ['red', 'darkblue']
+    plt.scatter(x_in[:,0], x_in[:,1], s=2, c=[col[i] for i in y_in.astype(int)])
+#    plt.scatter(x_in[y_in==0,0], x_in[y_in==0,1], s=12, marker='o',color='skyblue', edgecolors= "black", label='class 0 training points')
+#    plt.scatter(x_in[y_in==1,0], x_in[y_in==1,1], s=12, marker='D',color='tomato', edgecolors= "black", label='class 1 training points')
+    #fig.show()
+    fig.canvas.draw()
+
+#criterion.to(device)
+
 # Training settings
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
 parser.add_argument('--batch-size', type=int, default=100, help='input batch size for training')
@@ -52,7 +76,7 @@ parser.add_argument('--num_classes', type=int, default=2, help='the # of classes
 parser.add_argument('--beta', type=float, default=1, help='penalty parameter for KL term')
 
 args = parser.parse_args()
-
+args.outf = 'GAN_training'
 print(args)
 
 print("Random Seed: ", args.seed)
@@ -71,37 +95,23 @@ fig = plt.figure(figsize=(14,14))
 print('load data: ')
 train_loader = D.DataLoader(D.TensorDataset(torch.Tensor(x_in), torch.Tensor(y_in.astype(int)), torch.Tensor(x_out)),shuffle=True, batch_size=args.batch_size)
 print('Load model')
-model = models.MLP(model_dims)
+model = models.MLP(model_dims).to(device)
+model.load_state_dict(torch.load(args.outf + '/model_pretrained.pth', map_location=device))
 print(model)
-print('load GAN')
-nz = 100
-netG = models.Generator(1, nz, 64, 3) # ngpu, nz, ngf, nc
-netD = models.Discriminator(1, 3, 64) # ngpu, nc, ndf
+print('initialize GAN')
 
-def test_plot():
-    x = torch.tensor(toy_outD(100000)).to(device).float()
-#    x = torch.meshgrid([torch.arange(-10,10,.1), torch.arange(-10,10,.1)])
-#    x = torch.cat((x[0].reshape(-1,1),x[1].reshape(-1,1)),1).to(device)
-    y = torch.exp(logSm(model(x)))
-    x = x.cpu().data.numpy()
-    y = y.cpu().data.numpy()
-    x_class_0 = x[y[:,0]<0.2]
-    x_class_1 = x[y[:,0]>0.2]
-    #print(y.shape)
-   
-    plt.clf()
-    #plt.figure(figsize=[15,15],)
-    plt.scatter(x[:,0], x[:,1], s=2, c=y[:,0], cmap='gist_earth')
-    plt.colorbar()
-    col = ['red', 'darkblue']
-    plt.scatter(x_in[:,0], x_in[:,1], s=2, c=[col[i] for i in y_in.astype(int)])
-    #fig.show()
-    fig.canvas.draw()
-model.to(device)
-#criterion.to(device)
+nz = 100
+netG = models.MLP(model_dims).to(device)
+netD = models.MLP(model_dims).to(device) 
+# Initial setup for GAN
+real_label = 1
+fake_label = 0
+criterion = nn.BCELoss()
+fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 
 print('Setup optimizer')
-optimizer = optim.Adam(model.parameters(), lr=args.lr)
+optimizerD = optim.Adam(netD.parameters(), lr=args.lr, betas=(0.5, 0.999))
+optimizerG = optim.Adam(netG.parameters(), lr=args.lr, betas=(0.5, 0.999))
 
 decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
@@ -110,11 +120,27 @@ logSm = nn.LogSoftmax(dim=1)
 def train(epoch):
     model.train()
     for batch_idx, (data, target, data_out) in enumerate(train_loader):
-
-        
-        uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1./args.num_classes)).to(device)
         data, target, data_out = data.to(device), target.long().to(device), data_out.to(device)
-      
+        
+        gan_target = torch.FloatTensor(target.size()).fill_(0).to(device)
+        uniform_dist = (torch.Tensor(data.size(0), args.num_classes).fill_((1./args.num_classes))).to(device)
+        
+        
+        ###########################
+        # (1) Update D network    #
+        ###########################
+        # train with real
+        gan_target.fill_(real_label)
+        targetv = Variable(gan_target)
+        optimizerD.zero_grad()
+        output = netD(data)
+        errD_real = criterion(output, targetv)
+        errD_real.backward()
+        D_x = output.data.mean()
+
+        # train with fake
+        
+
         
 
         ###########################
@@ -133,7 +159,7 @@ def train(epoch):
         total_loss.backward()
         optimizer.step()
 
-        if batch_idx % 100 == 0:
+        if batch_idx % 10 == 0:
             print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item(), KL_loss.item()))
@@ -178,3 +204,30 @@ for epoch in range(1, args.epochs + 1):
 
 
 
+def test_plot2():
+    x = torch.tensor(toy_outD(100000)).to(device).float()
+#    x = torch.meshgrid([torch.arange(-10,10,.1), torch.arange(-10,10,.1)])
+#    x = torch.cat((x[0].reshape(-1,1),x[1].reshape(-1,1)),1).to(device)
+    y = torch.exp(logSm(model(x)))
+    x = x.cpu().data.numpy()
+    y = y.cpu().data.numpy()
+    x_class_0 = x[y[:,0]<0.2]
+    x_class_1 = x[y[:,0]>0.8]
+    x_class_no = x[(y[:,0]>0.2) & (y[:,0]<0.8)]
+#    #print(y.shape)
+    plt.figure()
+    plt.clf()
+    #plt.figure(figsize=[15,15],)
+
+#    col = ['red', 'darkblue']
+    plt.scatter(x_in[y_in==0,0], x_in[y_in==0,1], s=20, marker='*',color='white', edgecolors= "black", label='class 0 training points')
+    plt.scatter(x_in[y_in==1,0], x_in[y_in==1,1], s=20, marker='<',color='white', edgecolors= "black", label='class 1 training points')
+    plt.scatter(x_class_0[:,0], x_class_0[:,1], s=1, c='firebrick', label="class 0 prob <0.2", alpha=0.7)
+    plt.scatter(x_class_1[:,0], x_class_1[:,1], s=1, c='royalblue', label="class 0 prob >0.8", alpha=0.7)
+    plt.scatter(x_class_no[:,0], x_class_no[:,1], s=1, c='yellowgreen', label="class 0 prob in [0.2,0.8]", alpha=0.7)
+    plt.legend()
+    
+    #fig.show()
+    fig.canvas.draw()
+
+test_plot2()

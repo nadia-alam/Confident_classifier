@@ -1,7 +1,7 @@
 ##############################################
 # This code is based on samples from pytorch #
 ##############################################
-# Writer: Kimin Lee 
+# Writer: Based on code from Kimin Lee 
 from __future__ import print_function
 import argparse
 import torch
