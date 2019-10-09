@@ -129,7 +129,7 @@ def train(epoch):
         total_loss.backward()
         optimizer.step()
 
-        if batch_idx % 100 == 0:
+        if batch_idx % 10 == 0:
             print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item(), KL_loss.item()))

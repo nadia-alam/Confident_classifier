@@ -25,7 +25,7 @@ from torch.utils import data as D
 # configs
 model_dims = [2, 500, 500, 2]
 netD_dims = [2, 500, 500, 1]
-netG_dims = [100, 1000, 1000, 2]
+netG_dims = [100, 500, 500, 2]
 
 # data
 x_in, y_in = toy_inD(10000)
@@ -67,7 +67,7 @@ def weights_init_linear_xavier_normal(m):
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
 parser.add_argument('--batch-size', type=int, default=400, help='input batch size for training')
 parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train')
-parser.add_argument('--lr', type=float, default=0.0005, help='learning rate')
+parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
 #parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=10, help='how many batches to wait before logging training status')
@@ -79,7 +79,7 @@ parser.add_argument('--outf', default='save_dir', help='folder to output images 
 parser.add_argument('--droprate', type=float, default=0.1, help='learning rate decay')
 parser.add_argument('--decreasing_lr', default='5', help='decreasing strategy')
 parser.add_argument('--num_classes', type=int, default=2, help='the # of classes')
-parser.add_argument('--beta', type=float, default=5, help='penalty parameter for KL term')
+parser.add_argument('--beta', type=float, default=.0, help='penalty parameter for KL term')
 
 args = parser.parse_args()
 args.outf = 'GAN_training'
@@ -109,7 +109,6 @@ print('initialize GAN')
 nz = 100
 netG = models.MLP(netG_dims).to(device)
 netD = models.MLP(netD_dims).to(device) 
-model.apply(weights_init_linear_xavier_normal)
 netD.apply(weights_init_linear_xavier_normal)
 netG.apply(weights_init_linear_xavier_normal)
 # Initial setup for GAN
@@ -119,7 +118,6 @@ criterion = nn.BCELoss()
 fixed_noise = torch.FloatTensor(500, nz).normal_(0, 1).to(device)
 
 print('Setup optimizer')
-optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.5, 0.999))
 optimizerD = optim.Adam(netD.parameters(), lr=args.lr, betas=(0.5, 0.999))
 optimizerG = optim.Adam(netG.parameters(), lr=args.lr, betas=(0.5, 0.999))
 
@@ -130,7 +128,7 @@ logSm = nn.LogSoftmax(dim=1)
 
 #data, target=next(iter(train_loader))
 def train(epoch):
-    model.train()
+#    model.train()
     print("start epoch " + str(epoch))
     for batch_idx, (data, target) in enumerate(train_loader):
         
@@ -153,7 +151,7 @@ def train(epoch):
         D_x = output.data.mean()
 
         # train with fake
-        noise = torch.FloatTensor(data.size(0), nz).normal_(0, 1).to(device)
+        noise = torch.FloatTensor(data.size(0), nz).uniform_(-10, 10).to(device)
         fake = netG(noise)
         targetv = Variable(gan_target.fill_(fake_label))
         output = torch.sigmoid(netD(fake.detach())).view(-1)
@@ -167,13 +165,12 @@ def train(epoch):
         ###########################
         # (2) Update G network    #
         ###########################
-        noise = torch.FloatTensor(data.size(0), nz).normal_(0, 1).to(device)
-        fake = netG(noise)
         optimizerG.zero_grad()
         # Original GAN loss
         targetv = Variable(gan_target.fill_(fake_label))  
-        output = torch.sigmoid(netD(fake)).view(-1)
+        output =  torch.sigmoid(netD(fake)).view(-1)
         errG = - criterion(output, targetv)
+#        errG =  criterion(output, targetv)
         D_G_z2 = output.data.mean()
 
         # minimize the true distribution
@@ -185,19 +182,18 @@ def train(epoch):
         ###########################
         #  Update classifier   #
         ###########################
-#         cross entropy loss
-        optimizer.zero_grad()
-        output = logSm(model(data))
-        loss = F.nll_loss(output, target)
-
-        # KL divergence
-        noise = torch.FloatTensor(data.size(0), nz).normal_(0, 1).to(device)
-        fake = netG(noise)
-        ood_model_output = logSm(model(fake))
-        KL_loss = F.kl_div(ood_model_output, uniform_dist, reduction='batchmean')*args.num_classes
-        total_loss = loss + args.beta * KL_loss
-        total_loss.backward()
-        optimizer.step()
+        # cross entropy loss
+#        optimizer.zero_grad()
+#        output = logSm(model(data))
+#        loss = F.nll_loss(output, target)
+#
+#        # KL divergence
+#
+#        ood_model_output = logSm(model(data_out))
+#        KL_loss = F.kl_div(ood_model_output, uniform_dist, reduction='batchmean')*args.num_classes
+#        total_loss = loss + args.beta * KL_loss
+#        total_loss.backward()
+#        optimizer.step()
 
         if batch_idx % args.log_interval == 0:
             print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
@@ -252,12 +248,12 @@ for epoch in range(1, args.epochs + 1):
     if epoch in decreasing_lr:
         optimizerG.param_groups[0]['lr'] *= args.droprate
         optimizerD.param_groups[0]['lr'] *= args.droprate
-        optimizer.param_groups[0]['lr'] *= args.droprate
+#        optimizer.param_groups[0]['lr'] *= args.droprate
     if epoch % 20 == 0:
         # do checkpointing
         torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
         torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
-        torch.save(model.state_dict(), '%s/model_epoch_%d.pth' % (args.outf, epoch))
+#        torch.save(model.state_dict(), '%s/model_epoch_%d.pth' % (args.outf, epoch))
 
 
 
