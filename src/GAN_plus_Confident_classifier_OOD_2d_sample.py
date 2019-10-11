@@ -23,13 +23,14 @@ from torch.utils import data as D
 
 #import numpy as np
 # configs
+
+nz=4
 model_dims = [2, 500, 500, 2]
 netD_dims = [2, 500, 500, 1]
-netG_dims = [100, 500, 500, 2]
+netG_dims = [nz, 500, 500, 2]
 
 # data
 x_in, y_in = toy_inD(10000)
-#x_out = toy_outD(10000,x_min=[-10, -10], x_max=[10, 10])
 #plt.scatter(x_in[:,0], x_in[:,1], s=2, c=y_in
 #plt.scatter(x_out[:,0], x_out[:,1], s=2, marker='x')
 
@@ -65,9 +66,9 @@ def weights_init_linear_xavier_normal(m):
 
 # Training settings
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
-parser.add_argument('--batch-size', type=int, default=400, help='input batch size for training')
-parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train')
-parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
+parser.add_argument('--batch-size', type=int, default=800, help='input batch size for training')
+parser.add_argument('--epochs', type=int, default=5000, help='number of epochs to train')
+parser.add_argument('--lr', type=float, default=0.0001, help='learning rate')
 #parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=10, help='how many batches to wait before logging training status')
@@ -79,7 +80,7 @@ parser.add_argument('--outf', default='save_dir', help='folder to output images 
 parser.add_argument('--droprate', type=float, default=0.1, help='learning rate decay')
 parser.add_argument('--decreasing_lr', default='5', help='decreasing strategy')
 parser.add_argument('--num_classes', type=int, default=2, help='the # of classes')
-parser.add_argument('--beta', type=float, default=.0, help='penalty parameter for KL term')
+parser.add_argument('--beta', type=float, default=1.5, help='penalty parameter for KL term')
 
 args = parser.parse_args()
 args.outf = 'GAN_training'
@@ -106,7 +107,7 @@ model.load_state_dict(torch.load(args.outf + '/model_pretrained.pth', map_locati
 print(model)
 print('initialize GAN')
 
-nz = 100
+#nz = 2
 netG = models.MLP(netG_dims).to(device)
 netD = models.MLP(netD_dims).to(device) 
 netD.apply(weights_init_linear_xavier_normal)
@@ -142,43 +143,52 @@ def train(epoch):
         # (1) Update D network    #
         ###########################
         # train with real
+        for p in netD.parameters():
+            p.requires_grad = True
+        
         gan_target.fill_(real_label)
         targetv = Variable(gan_target)
         optimizerD.zero_grad()
         output = torch.sigmoid(netD(data)).view(-1)
         errD_real = criterion(output, torch.FloatTensor(target.size()).fill_(1).to(device))
-        #errD_real.backward()
+        errD_real.backward()
         D_x = output.data.mean()
 
         # train with fake
         noise = torch.FloatTensor(data.size(0), nz).uniform_(-10, 10).to(device)
-        fake = netG(noise)
+        
+        fake = netG(noise)  
         targetv = Variable(gan_target.fill_(fake_label))
         output = torch.sigmoid(netD(fake.detach())).view(-1)
         errD_fake = criterion(output, torch.FloatTensor(target.size()).fill_(0).to(device))
-#        errD_fake.backward()
+        errD_fake.backward()
         D_G_z1 = output.data.mean()
         errD = errD_real + errD_fake
-        errD.backward()
+#        errD.backward()
         optimizerD.step()
         
         ###########################
         # (2) Update G network    #
         ###########################
-        optimizerG.zero_grad()
-        # Original GAN loss
-        targetv = Variable(gan_target.fill_(fake_label))  
-        output =  torch.sigmoid(netD(fake)).view(-1)
-        errG = - criterion(output, targetv)
-#        errG =  criterion(output, targetv)
-        D_G_z2 = output.data.mean()
-
-        # minimize the true distribution
-        KL_fake_output = F.log_softmax(model(fake))
-        errG_KL = F.kl_div(KL_fake_output, uniform_dist, reduction='batchmean')*args.num_classes
-        generator_loss = errG + args.beta*errG_KL
-        generator_loss.backward()
-        optimizerG.step()
+        if batch_idx%5==0:
+                
+               
+            for p in netD.parameters():
+                p.requires_grad = False
+            optimizerG.zero_grad()
+            # Original GAN loss
+            targetv = Variable(gan_target.fill_(fake_label))  
+            output =  torch.sigmoid(netD(fake)).view(-1)
+            errG = - criterion(output, targetv)
+    #        errG =  criterion(output, targetv)
+            D_G_z2 = output.data.mean()
+    
+            # minimize the true distribution
+            KL_fake_output = F.log_softmax(model(fake))
+            errG_KL = F.kl_div(KL_fake_output, uniform_dist, reduction='batchmean')*args.num_classes
+            generator_loss = errG + args.beta*errG_KL
+            generator_loss.backward()
+            optimizerG.step()
         ###########################
         #  Update classifier   #
         ###########################

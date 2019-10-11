@@ -28,7 +28,7 @@ netD_dims = [2, 500, 500, 1]
 netG_dims = [100, 1000, 1000, 2]
 
 # data
-x_in, y_in = toy_inD(10000)
+x_in, y_in = toy_inD(10)
 #x_out = toy_outD(10000,x_min=[-10, -10], x_max=[10, 10])
 #plt.scatter(x_in[:,0], x_in[:,1], s=2, c=y_in
 #plt.scatter(x_out[:,0], x_out[:,1], s=2, marker='x')
@@ -65,7 +65,7 @@ def weights_init_linear_xavier_normal(m):
 
 # Training settings
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
-parser.add_argument('--batch-size', type=int, default=400, help='input batch size for training')
+parser.add_argument('--batch-size', type=int, default=4, help='input batch size for training')
 parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.0005, help='learning rate')
 #parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
@@ -127,7 +127,8 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
 #data, target, data_out = next(iter(train_loader))
 logSm = nn.LogSoftmax(dim=1)
-
+for i in range(20):
+    print((next(iter(train_loader))[0]))
 #data, target=next(iter(train_loader))
 def train(epoch):
     model.train()
@@ -144,6 +145,8 @@ def train(epoch):
         # (1) Update D network    #
         ###########################
         # train with real
+        for p in netD.parameters():
+            p.requires_grad = True
         gan_target.fill_(real_label)
         targetv = Variable(gan_target)
         optimizerD.zero_grad()
@@ -167,6 +170,8 @@ def train(epoch):
         ###########################
         # (2) Update G network    #
         ###########################
+        for p in netD.parameters():
+            p.requires_grad = False 
         noise = torch.FloatTensor(data.size(0), nz).normal_(0, 1).to(device)
         fake = netG(noise)
         optimizerG.zero_grad()
