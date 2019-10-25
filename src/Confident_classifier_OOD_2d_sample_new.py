@@ -39,7 +39,7 @@ parser.add_argument('--batch-size', type=int, default=400, help='input batch siz
 parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.002, help='learning rate')
 #parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
-parser.add_argument('--seed', type=int, default=100, help='random seed')
+parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=1, help='how many batches to wait before logging training status')
 #parser.add_argument('--dataset', default='svhn', help='cifar10 | svhn')
 #parser.add_argument('--dataroot', required=True, help='path to dataset')
@@ -49,7 +49,7 @@ parser.add_argument('--outf', default='save_dir_beta_2', help='folder to output 
 parser.add_argument('--droprate', type=float, default=0.1, help='learning rate decay')
 parser.add_argument('--decreasing_lr', default='5', help='decreasing strategy')
 parser.add_argument('--num_classes', type=int, default=2, help='the # of classes')
-parser.add_argument('--beta', type=float, default=2, help='penalty parameter for KL term')
+parser.add_argument('--beta', type=float, default=1, help='penalty parameter for KL term')
 
 args = parser.parse_args()
 
@@ -133,38 +133,38 @@ def test_plot2():
 logSm = nn.LogSoftmax(dim=1)
 def train(epoch):
     model.train()
-    for batch_idx, (data, target, data_out) in enumerate(train_loader):
-
-        
-        uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1./args.num_classes)).to(device)
-        data, target, data_out = data.to(device), target.long().to(device), data_out.to(device)
+    #for batch_idx, (data, target, data_out) in enumerate(train_loader):
+    x_in, y_in = toy_inD(400)
+    x_out = toy_outD(400,x_min=[-10, -10], x_max=[10, 10])
+    data, target, data_out = torch.Tensor(x_in), torch.Tensor(y_in.astype(int)), torch.Tensor(x_out)
+    uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1./args.num_classes)).to(device)
+    data, target, data_out = data.to(device), target.long().to(device), data_out.to(device)
       
         
 
-        ###########################
-        #  Update classifier   #
-        ###########################
-        # cross entropy loss
-        optimizer.zero_grad()
-        output = logSm(model(data))
-        loss = F.nll_loss(output, target)
+    ###########################
+    #  Update classifier   #
+    ###########################
+    # cross entropy loss
+    optimizer.zero_grad()
+    output = logSm(model(data))
+    loss = F.nll_loss(output, target)
 
-        # KL divergence
+    # KL divergence
 
-        ood_model_output = logSm(model(data_out))
-        KL_loss = F.kl_div(ood_model_output, uniform_dist, reduction='batchmean')*args.num_classes
-        total_loss = loss + args.beta * KL_loss
-        total_loss.backward()
-        optimizer.step()
+    ood_model_output = logSm(model(data_out))
+    KL_loss = F.kl_div(ood_model_output, uniform_dist, reduction='batchmean')*args.num_classes
+    total_loss = loss + args.beta * KL_loss
+    total_loss.backward()
+    optimizer.step()
 
-        if batch_idx % 10 == 0:
-            print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item(), KL_loss.item()))
-            #print(torch.exp(ood_model_output ))
+    #if batch_idx % 10 == 0:
+    print('Classification Train Epoch: {},  Loss: {:.6f}, KL fake Loss: {:.6f}'.format(
+            epoch, loss.item(), KL_loss.item()))
+        #print(torch.exp(ood_model_output ))
 #            vutils.save_image(fake.data, '%s/gan_samples_epoch_%03d.png'%(args.outf, epoch), normalize=True)\
-    
-        test_plot2()
+
+    test_plot2()
 
 #   
 #def test(epoch):

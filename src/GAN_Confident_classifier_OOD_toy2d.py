@@ -27,22 +27,22 @@ from torch.utils import data as D
 #import numpy as np
 # modified configs from author
 
-starting_epoch = 0
+starting_epoch = 2001#0
         
 final_epoch = 5000
 data_in_size = 10000
-nzs = {2,4}
-betas = {4 ,2, 3}#0,0.8
-lr = 0.0005
+nzs = {4}
+betas = {1}#0,0.8
+lr = 5e-5 #0.0005
 
 
 train_classifier_only = False
-train_GAN_only = True
+train_GAN_only = False
 
 
 # options
 cf_train_interval = 1
-gen_train_interval = 1
+gen_train_interval = 5
 dis_train_interval = 1
 PRETRAINED_CLASSIFIER = True
 
@@ -349,11 +349,13 @@ classifier_loss_in = torch.zeros([args.epochs])
 KL_loss_out = torch.zeros([args.epochs])
 for nz in nzs:
     for beta in betas:
+        args.outf = 'GAN_trainings_'+ '_beta_' + str(beta) + '_nz_' + str(nz) 
         args.beta = beta
         fixed_noise = (torch.FloatTensor(200, nz).uniform_(-10, 10)).to(device) # Different from author
         FIXED_CLASSIFIER = False
         FIXED_GENERATOR = False
         FIXED_DISCRIMINATOR = False
+        
 
         if train_classifier_only:
             FIXED_CLASSIFIER = False
@@ -374,9 +376,12 @@ for nz in nzs:
         
         netG_dims = [nz, 500, 500, 2]
         print('Setup Classifier')
+        model = models.MLP(model_dims).to(device)
+        netG = models.MLP(netG_dims).to(device)
+        netD = models.MLP(netD_dims).to(device) 
         if starting_epoch == 0:
                 
-            model = models.MLP(model_dims).to(device)
+            
             if PRETRAINED_CLASSIFIER:
                 	print('Load pretrained model')
                 	model.load_state_dict(torch.load( 'GAN_training/model_pretrained.pth', map_location=device))
@@ -386,13 +391,17 @@ for nz in nzs:
             
             
             print('Setup GAN')
-            netG = models.MLP(netG_dims).to(device)
+            
             netG.apply(weights_init_linear_xavier_normal)
                    
-            netD = models.MLP(netD_dims).to(device) 
+            
             netD.apply(weights_init_linear_xavier_normal)
+        
         else:
-            print()
+            model.load_state_dict(torch.load('%s/model_epoch_%d.pth' % (args.outf, starting_epoch-1), map_location=device))            
+            netG.load_state_dict(torch.load('%s/netG_epoch_%d.pth' % (args.outf, starting_epoch-1), map_location=device))            
+            netD.load_state_dict(torch.load('%s/netD_epoch_%d.pth' % (args.outf, starting_epoch-1), map_location=device))            
+            
         #print(netG)
         print(model)
         print(netD)
@@ -412,7 +421,7 @@ for nz in nzs:
         
         decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
-        args.outf = 'GAN_training_3'+ '_beta_' + str(beta) + '_nz_' + str(nz) 
+        args.outf = 'GAN_trainings_'+ '_beta_' + str(beta) + '_nz_' + str(nz) 
 
         if not os.path.exists(args.outf):
             os.makedirs(args.outf)
@@ -435,34 +444,34 @@ for nz in nzs:
         torch.save(gen_loss, '%s/gen_loss.pth' % (args.outf))
         torch.save(classifier_loss_in, '%s/classifier_loss_in.pth' % (args.outf))
         torch.save(KL_loss_out, '%s/KL_loss_out.pth' % (args.outf))
-
-def test_plot2():
-    x = torch.tensor(toy_outD(100000)).to(device).float()
-#    x = torch.meshgrid([torch.arange(-10,10,.1), torch.arange(-10,10,.1)])
-#    x = torch.cat((x[0].reshape(-1,1),x[1].reshape(-1,1)),1).to(device)
-    y = torch.exp(logSm(model(x)))
-    x = x.cpu().data.numpy()
-    y = y.cpu().data.numpy()
-    x_class_0 = x[y[:,0]<0.2]
-    x_class_1 = x[y[:,0]>0.8]
-    x_class_no = x[(y[:,0]>0.2) & (y[:,0]<0.8)]
-#    #print(y.shape)
-    plt.figure()
-    plt.clf()
-    #plt.figure(figsize=[15,15],)
-
-#    col = ['red', 'darkblue']
-#    plt.scatter(x_in[y_in==0,0], x_in[y_in==0,1], s=20, marker='*',color='white', edgecolors= "black", label='class 0 training points')
-#    plt.scatter(x_in[y_in==1,0], x_in[y_in==1,1], s=20, marker='<',color='white', edgecolors= "black", label='class 1 training points')
-    plt.scatter(x_class_0[:,0], x_class_0[:,1], s=1, c='firebrick', label="class 0 prob <0.2", alpha=0.7)
-    plt.scatter(x_class_1[:,0], x_class_1[:,1], s=1, c='royalblue', label="class 0 prob >0.8", alpha=0.7)
-    plt.scatter(x_class_no[:,0], x_class_no[:,1], s=1, c='yellowgreen', label="class 0 prob in [0.2,0.8]", alpha=0.7)
-    plt.legend()
-    
-    #fig.show()
-    fig.canvas.draw()
-
-test_plot2()
+#
+#def test_plot2():
+#    x = torch.tensor(toy_outD(100000)).to(device).float()
+##    x = torch.meshgrid([torch.arange(-10,10,.1), torch.arange(-10,10,.1)])
+##    x = torch.cat((x[0].reshape(-1,1),x[1].reshape(-1,1)),1).to(device)
+#    y = torch.exp(logSm(model(x)))
+#    x = x.cpu().data.numpy()
+#    y = y.cpu().data.numpy()
+#    x_class_0 = x[y[:,0]<0.2]
+#    x_class_1 = x[y[:,0]>0.8]
+#    x_class_no = x[(y[:,0]>0.2) & (y[:,0]<0.8)]
+##    #print(y.shape)
+#    plt.figure()
+#    plt.clf()
+#    #plt.figure(figsize=[15,15],)
+#
+##    col = ['red', 'darkblue']
+##    plt.scatter(x_in[y_in==0,0], x_in[y_in==0,1], s=20, marker='*',color='white', edgecolors= "black", label='class 0 training points')
+##    plt.scatter(x_in[y_in==1,0], x_in[y_in==1,1], s=20, marker='<',color='white', edgecolors= "black", label='class 1 training points')
+#    plt.scatter(x_class_0[:,0], x_class_0[:,1], s=1, c='firebrick', label="class 0 prob <0.2", alpha=0.7)
+#    plt.scatter(x_class_1[:,0], x_class_1[:,1], s=1, c='royalblue', label="class 0 prob >0.8", alpha=0.7)
+#    plt.scatter(x_class_no[:,0], x_class_no[:,1], s=1, c='yellowgreen', label="class 0 prob in [0.2,0.8]", alpha=0.7)
+#    plt.legend()
+#    
+#    #fig.show()
+#    fig.canvas.draw()
+#
+#test_plot2()
 #def test_plot():
 #    x = torch.tensor(toy_outD(100000)).to(device).float()
 ##    x = torch.meshgrid([torch.arange(-10,10,.1), torch.arange(-10,10,.1)])
